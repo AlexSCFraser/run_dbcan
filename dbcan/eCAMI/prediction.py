@@ -181,80 +181,7 @@ def get_cluster_number(file_name,fam_kmer_dict,output_dir,n_mer,piece_number,pro
                 if int(temp_fam[1])>1 and temp_name in selected_fam_dict.keys():
                     fw.write(protein_name[i]+'\t'+write_line(selected_fam_dict[temp_name],protein_string[i]))
 
-
     fw.close()
-
-
-def get_cluster_number_no_IO(file_name,fam_kmer_dict,output_dir,n_mer,piece_number,protein_name,protein_string,important_n_mer_number,beta):
-    text_output = ""
-    # fw = open(os.path.join(output_dir, file_name), 'w')
-    for i in piece_number:
-        kmer=[]
-        for j in range(n_mer):
-            text=protein_string[i][j:len(protein_string[i])]
-            kmer+=re.findall('.{'+str(n_mer)+'}', text)
-        kmer=list(set(kmer))
-        selected_fam_dict={}
-        sort_fam=[]
-        for each_fam in fam_kmer_dict.keys():
-            all_cluster_kmer=fam_kmer_dict[each_fam][2]
-            kmer_message=fam_kmer_dict[each_fam][1]
-            kmer_label=fam_kmer_dict[each_fam][0]
-            each_cluster_score=[]
-
-            for j in range(len(all_cluster_kmer)):
-                score=0
-                number_score=0
-                each_cluster_kmer=all_cluster_kmer[j]
-                same_kmer=list(set(kmer).intersection(set(each_cluster_kmer.keys())))
-                temp_same_kmer=same_kmer[:]
-                for k in temp_same_kmer:
-                    number_score+=each_cluster_kmer[k]
-                score+=len(same_kmer)
-                if score:
-                    each_cluster_score.append([j,score,number_score,same_kmer])
-
-            if len(each_cluster_score)==0:
-                continue
-            each_cluster_score=sorted(each_cluster_score,key=(lambda x:x[2]),reverse=True)
-            each_cluster_score=sorted(each_cluster_score,key=(lambda x:x[1]),reverse=True)
-            if each_cluster_score[0][2]>=beta and each_cluster_score[0][1]>=important_n_mer_number:
-                sort_fam.append([each_cluster_score[0][1],each_cluster_score[0][2],each_fam])
-                selected_fam_dict[each_fam]=[each_cluster_score[0][1]], \
-                                            each_cluster_score[0][2],each_cluster_score[0][3], \
-                                            kmer_message[each_cluster_score[0][0]],kmer_label[each_cluster_score[0][0]]
-        if len(sort_fam)==0:
-            continue
-        sort_fam=sorted(sort_fam,key=(lambda x:x[1]),reverse=True)
-        sort_fam=sorted(sort_fam,key=(lambda x:x[0]),reverse=True)
-
-
-        first_fam=sort_fam[0][2]
-        fam_key=list(selected_fam_dict.keys())
-        fam_key.remove(first_fam)
-        for each_fam_key in fam_key:
-            if len(set(list(''.join(selected_fam_dict[each_fam_key][2]))))<5:
-                del selected_fam_dict[each_fam_key]
-        flag=len(first_fam.split('.'))
-        # fw.write(protein_name[i]+'\t'+write_line(selected_fam_dict[first_fam],protein_string[i]))
-        text_output += protein_name[i] + '\t' + write_line(selected_fam_dict[first_fam],protein_string[i])
-        used_fam=[first_fam]
-        other_fams=selected_fam_dict[first_fam][3]
-        other_fams=other_fams.split('|')
-        for each_fam in other_fams:
-            temp_fam=each_fam.split(':')
-            temp_name=temp_fam[0].split('_')[0]
-            if flag>1:
-                temp_name=temp_name.split('.')
-                temp_name='.'.join(temp_name[0:flag])
-            if len(temp_fam)==2 and temp_name not in used_fam:
-                used_fam.append(temp_fam[0].split('_')[0])
-                if int(temp_fam[1])>1 and temp_name in selected_fam_dict.keys():
-                    # fw.write(protein_name[i]+'\t'+write_line(selected_fam_dict[temp_name],protein_string[i]))
-                    text_output += protein_name[i] + '\t' + write_line(selected_fam_dict[temp_name], protein_string[i])
-
-    return text_output
-    # fw.close()
 
 
 def get_validation_results(input_fasta_file,database_dir,output_dir,output_file_name,n_mer,important_n_mer_number,beta,fam_kmer_dict,jobs):
@@ -276,13 +203,6 @@ def get_validation_results(input_fasta_file,database_dir,output_dir,output_file_
 
     pool = Pool(processes=jobs)
     piece_number=np.array_split(list(range(len(protein_name))),jobs)
-
-
-    # args_iterable = [(f"{input_fasta_file}_thread_{i}.txt",fam_kmer_dict,output_dir,n_mer,piece_number[i],protein_name,protein_string,important_n_mer_number,beta) for i in range(jobs)]
-    #
-    # all_text = pool.starmap(get_cluster_number_no_IO, args_iterable, chunksize=1)
-    # with open(os.path.join(output_dir, pred_file_name), 'w') as fw:
-    #     fw.write(''.join(all_text))
 
     for i in range(jobs):
         file_name=input_fasta_file+'_thread_'+str(i)+'.txt'
