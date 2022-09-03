@@ -10,6 +10,7 @@
 # Updated by Qiwei Ge in Dr.Yin's Lab at UNL
 # Updated by Alex Fraser to allow direct calls to main function from other scripts on 13/06/22
 # updated information[Qiwei Ge]: 1. Hotpep has been removed, added eCAMI tool. 2. cgc out reformatting. 3. Fixed issues multiple GT2s.
+# Updated by Alex Fraser to add Windows/WSL support on 02/09/22
 # Accepts user input
 # Predicts genes if needed
 # Runs input against HMMER, DIAMOND, and Hotpep
@@ -17,6 +18,9 @@
 # Creats an overview table using output files from core
 # tools from Hotpep.out,hmmer.out and diamond.out
 ##########################################################
+import shutil
+import subprocess
+import sys
 from subprocess import Popen, call, check_output
 import os
 import argparse
@@ -40,7 +44,8 @@ def runHmmScan(outPath, hmm_cpu, dbDir, hmm_eval, hmm_cov, db_name):
         f.write(parsed_hmm_output)
 
     if os.path.exists('%sh%s.out' % (outPath, db_name)):
-        call(['rm', '%sh%s.out' % (outPath, db_name)])
+        # call(['rm', '%sh%s.out' % (outPath, db_name)]) #todo: remove this line after ensuring below works properly
+        os.remove(f"{outPath}h{db_name}.out")
 
 
 def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-102, dia_cpu=4, hmm_eval=1e-15,
@@ -56,13 +61,24 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     ##########################
     # Begin Setup and Input Checks
 
-    if not dbDir.endswith("/") and len(dbDir) > 0:
-        dbDir += "/"
+    # appending '/' is unnecessary when using os.path.join for all the file path concatenation and makes the code usable
+    # on all operating systems
+    # if not dbDir.endswith("/") and len(dbDir) > 0:
+    #     dbDir += "/"
+    #
+    # if not outDir.endswith("/") and len(outDir) > 0:
+    #     outDir += "/"
 
-    if not outDir.endswith("/") and len(outDir) > 0:
-        outDir += "/"
+    if sys.platform.__contains__("win"):
+        # Check WSL for required programs before continuing on windows
+        try:
+            test = subprocess.run("wsl hmmscan -h", capture_output=True, check=True)
+        except FileNotFoundError as f_error:
+            raise UserWarning("WSL not installed, please install Windows Subsystem for Linux") from f_error
+        except subprocess.CalledProcessError as c_error:
+            raise UserWarning("HMMER not installed on WSL installation. Please install HMMER on your WSL instance.")
 
-    outPath = outDir + prefix
+    outPath = os.path.join(outDir, prefix)
     auxFile = ""
 
     find_clusters = False
@@ -71,7 +87,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         if inputType == "protein":
             auxFile = cluster
         else:
-            auxFile = '%sprodigal.gff'%outPath
+            auxFile = os.path.join(outPath, 'prodigal.gff')
 
     if not os.path.isdir(dbDir):
         print(dbDir , "ERROR: The database directory does not exist")
@@ -88,7 +104,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         exit()
 
     if not os.path.isdir(outDir):
-        call(['mkdir', outDir])
+        os.mkdir(outDir)
 
     if find_clusters and inputType == "protein":
         if len(auxFile) > 0:
@@ -118,7 +134,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         call(['prodigal', '-i', inputFile, '-a', '%suniInput'%outPath, '-o', '%sprodigal.gff'%outPath, '-f', 'gff', '-p', 'meta','-q'])
     #Proteome
     if inputType == 'protein':
-        call(['cp', inputFile, '%suniInput'%outPath])
+        shutil.copy(inputFile, os.path.join(outDir, "uniInput"))
 
     # End Gene Prediction Tools
     #######################
@@ -137,23 +153,33 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     if tools[0]:
         # diamond blastp -d db/CAZy -e 1e-102 -q output_EscheriaColiK12MG1655/uniInput -k 1 -p 2 -o output_EscheriaColiK12MG1655/diamond1.out -f 6
         print("\n\n***************************1. DIAMOND start*************************************************\n\n")
-        os.system('diamond blastp -d %s -e %s -q %suniInput -k 1 -p %d -o %sdiamond.out -f 6'%(os.path.join(dbDir, "CAZy"), str(dia_eval), outPath, dia_cpu, outPath))
+        temp_proc = subprocess.run(f'diamond blastp -d {os.path.join(dbDir, "CAZy")} -e {str(dia_eval)} -q {os.path.join(outPath, "uniInput")} -k 1 -p {dia_cpu} -o {os.path.join(outPath, "diamond.out")} -f 6', check=True)
+
+        # os.system('diamond blastp -d %s -e %s -q %suniInput -k 1 -p %d -o %sdiamond.out -f 6'%(os.path.join(dbDir, "CAZy"), str(dia_eval), outPath, dia_cpu, outPath))
         # diamond = Popen(['diamond', 'blastp', '-d', '%sCAZy.dmnd' % dbDir, '-e', str(args.dia_eval), '-q', '%suniInput' % outPath, '-k', '1', '-p', str(args.dia_cpu), '-o', '%sdiamond.out'%outPath, '-f', '6'])
         print("\n\n***************************1. DIAMOND end***************************************************\n\n")
 
     if tools[1]:
         print("\n\n***************************2. HMMER start*************************************************\n\n")
-        os.system(f"hmmscan --domtblout {outPath}h.out --cpu {hmm_cpu} -o /dev/null {os.path.join(dbDir, dbCANFile)} {outPath}uniInput ")
+        if sys.platform.__contains__("win"):
+            win_hpath = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'h.out')}'", capture_output=True, check=True).stdout.decode().strip()
+            win_dbpath = subprocess.run(f"wsl wslpath '{os.path.join(dbDir, dbCANFile)}'", capture_output=True, check=True).stdout.decode().strip()
+            win_outpath = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'uniInput')}'", capture_output=True, check=True).stdout.decode().strip()
+            subprocess.run(f"wsl hmmscan --domtblout {win_hpath} --cpu {hmm_cpu} -o /dev/null {win_dbpath} {win_outpath}")
+        else:
+            # os.system(f"hmmscan --domtblout {os.path.join(outPath, 'h.out')} --cpu {hmm_cpu} -o /dev/null {os.path.join(dbDir, dbCANFile)} {os.path.join(outPath, 'uniInput')} ")
+            subprocess.run(f"hmmscan --domtblout {os.path.join(outPath, 'h.out')} --cpu {hmm_cpu} -o /dev/null {os.path.join(dbDir, dbCANFile)} {os.path.join(outPath, 'uniInput')}", check=True)
         print("\n\n***************************2. HMMER end***************************************************\n\n")
 
-        hmm_parser_output = hmmscan_parser.run(f"{outPath}h.out", eval_num=hmm_eval, coverage=hmm_cov)
-        with open(f"{outPath}hmmer.out", 'w') as hmmer_file:
+        hmm_parser_output = hmmscan_parser.run(os.path.join(outPath, "h.out"), eval_num=hmm_eval, coverage=hmm_cov)
+        with open(os.path.join(outPath, "hmmer.out"), 'w') as hmmer_file:
             hmmer_file.write(hmm_parser_output)
         # could clean this up and manipulate hmm_parser_output data directly instead of passing it into a temp file
-        with open(f"{outPath}hmmer.out", "r+") as f:
+        with open(os.path.join(outPath, "hmmer.out"), "r+") as f:
             text = f.read()
             f.close()
-            call(['rm', f"{outPath}hmmer.out"])
+            os.remove(os.path.join(outPath, "hmmer.out"))
+
             text = text.split('\n')
             if '' in text:
                 text.remove('')
@@ -161,11 +187,11 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                 if 'GT2_' in text[i]:
                     profile = text[i].split('\t')[0].split('.')[0]
                     text[i] = text[i].replace(profile,'GT2')
-                with open(f"{outPath}hmmer.out", 'a') as f:
+                with open(os.path.join(outPath, "hmmer.out"), 'a') as f:
                     f.write(text[i]+'\n')
                     f.close()
-        if os.path.exists(f"{outPath}h.out"):
-            call(['rm', f"{outPath}h.out"])
+        if os.path.exists(os.path.join(outPath, "h.out")):
+            os.remove(os.path.join(outPath, "h.out"))
 
     if tools[2]:
         print("\n\n***************************3. eCAMI start***************************************************\n\n")
@@ -188,36 +214,36 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     # Begin Adding Column Headers
 
     if tools[2]:
-        with open(outPath+'eCAMI.out') as f:
-            with open(outPath+'temp', 'w') as out:
+        with open(os.path.join(outPath, 'eCAMI.out'), 'r') as f:
+            with open(os.path.join(outPath, 'temp'), 'w') as out:
                 out.write('protein_name\tfam_name:group_number\tsubfam_name_of_the_group:subfam_name_count\n')
                 # for line in f:
                 for count, line in enumerate(f):
                     if count % 2 == 0:
                         more_information = line.split(">")
                         out.write(more_information[1])
-        call(['mv', outPath+'temp', outPath+'eCAMI.out'])
+        shutil.move(os.path.join(outDir, "temp"), os.path.join(outDir, "eCAMI.out"))
 
     if tools[1]:
         try:
-            with open(outDir+prefix+'hmmer.out') as f:
-                with open(outDir+prefix+'temp', 'w') as out:
+            with open(os.path.join(outDir, prefix, 'hmmer.out')) as f:
+                with open(os.path.join(outDir, prefix, 'temp'), 'w') as out:
                     out.write('HMM Profile\tProfile Length\tGene ID\tGene Length\tE Value\tProfile Start\tProfile End\tGene Start\tGene End\tCoverage\n')
                     for line in f:
                         out.write(line)
-            call(['mv', outDir+prefix+'temp', outDir+prefix+'hmmer.out'])
+            shutil.move(os.path.join(outDir, prefix, "temp"), os.path.join(outDir, prefix, "hmmer.out"))
         except:
-            with open(outDir+prefix+'temp', 'w') as out:
+            with open(os.path.join(outDir, prefix, 'temp'), 'w') as out:
                 out.write('HMM Profile\tProfile Length\tGene ID\tGene Length\tE Value\tProfile Start\tProfile End\tGene Start\tGene End\tCoverage\n')
-            call(['mv', outDir+prefix+'temp', outDir+prefix+'hmmer.out'])
+            shutil.move(os.path.join(outDir, prefix, "temp"), os.path.join(outDir, prefix, "hmmer.out"))
 
     if tools[0]:
-        with open(outDir+prefix+'diamond.out') as f:
-            with open(outDir+prefix+'temp', 'w') as out:
+        with open(os.path.join(outDir, prefix, 'diamond.out')) as f:
+            with open(os.path.join(outDir, prefix, 'temp'), 'w') as out:
                 out.write('Gene ID\tCAZy ID\t% Identical\tLength\tMismatches\tGap Open\tGene Start\tGene End\tCAZy Start\tCAZy End\tE Value\tBit Score\n')
                 for line in f:
                     out.write(line)
-        call(['mv', outDir+prefix+'temp', outDir+prefix+'diamond.out'])
+        shutil.move(os.path.join(outDir, prefix, "temp"), os.path.join(outDir, prefix, "diamond.out"))
 
     # End Adding Column Headers
     ########################
@@ -243,8 +269,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         '''
         tp diamond
         '''
-        call(['diamond', 'blastp', '-d', dbDir+'tcdb.dmnd', '-e', '1e-10', '-q', '%suniInput' % outPath, '-k', '1', '-p', '1', '-o', outPath+'tp.out', '-f', '6'])
-
+        call(['diamond', 'blastp', '-d', os.path.join(dbDir, 'tcdb.dmnd'), '-e', '1e-10', '-q', os.path.join(outPath, 'uniInput') , '-k', '1', '-p', '1', '-o', os.path.join(outPath, 'tp.out'), '-f', '6'])
 
         tp = set()
         tf = set()
@@ -254,7 +279,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         tf_genes = {}
         stp_genes = {}
 
-        with open("%stf-1.out" % outPath) as f:
+        with open(os.path.join(outPath, "tf-1.out")) as f:
             for line in f:
                 row = line.rstrip().split('\t')
                 tf.add(row[2])
@@ -264,7 +289,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                 else:
                     tf_genes[row[2]] += ',' + row[0]
 
-        with open("%stf-2.out" % outPath) as f:
+        with open(os.path.join(outPath, "tf-2.out")) as f:
             for line in f:
                 row = line.rstrip().split('\t')
                 tf.add(row[2])
@@ -274,7 +299,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                 else:
                     tf_genes[row[2]] += ',' + row[0]
 
-        with open(outDir+prefix+'tp.out') as f:
+        with open(os.path.join(outDir, prefix, 'tp.out')) as f:
             for line in f:
                 row = line.rstrip().split('\t')
                 tp.add(row[0])
@@ -283,7 +308,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                 else:
                     tp_genes[row[0]] += ','+row[1]
 
-        with open("%sstp.out" % outPath) as f:
+        with open(os.path.join(outPath, "stp.out")) as f:
             for line in f:
                 row = line.rstrip().split('\t')
                 stp.add(row[2])
@@ -301,7 +326,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         hmm = set()
         eca = set()
         if tools[0]:
-            with open(outDir+prefix+'diamond.out') as f:
+            with open(os.path.join(outDir, prefix, 'diamond.out')) as f:
                 next(f)
                 for line in f:
                     row = line.rstrip().split('\t')
@@ -310,7 +335,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                         cazyme_genes[row[0]] = set()
                     cazyme_genes[row[0]].update(set(row[1].strip("|").split('|')[1:]))
         if tools[1]:
-            with open(outDir+prefix+'hmmer.out') as f:
+            with open(os.path.join(outDir, prefix, 'hmmer.out')) as f:
                 next(f)
                 for line in f:
                     row = line.rstrip().split('\t')
@@ -319,7 +344,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                         cazyme_genes[row[2]] = set()
                     cazyme_genes[row[2]].add(row[0].split('.hmm')[0])
         if tools[2]:
-            with open(outDir+prefix+'eCAMI.out') as f:
+            with open(os.path.join(outDir, prefix, 'eCAMI.out')) as f:
                 next(f)
                 for line in f:
                     row_ori = line.rstrip().split('\t')
@@ -347,8 +372,8 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         # Begin GFF preperation
 
         if inputType == "prok" or inputType == "meta":   #use Prodigal GFF output
-            with open(outDir+prefix+'prodigal.gff') as f:
-                with open(outDir+prefix+'cgc.gff', 'w') as out:
+            with open(os.path.join(outDir, prefix, 'prodigal.gff')) as f:
+                with open(os.path.join(outDir, prefix, 'cgc.gff'), 'w') as out:
                     for line in f:
                         if not line.startswith("#"):
                             row = line.rstrip().rstrip(";").split('\t')
@@ -379,7 +404,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                             break
             if gff:  #user file was in GFF format
                 with open(auxFile) as f:
-                    with open(outDir+prefix+'cgc.gff', 'w') as out:
+                    with open(os.path.join(outDir, prefix, 'cgc.gff'), 'w') as out:
                         for line in f:
                             if not line.startswith("#"):
                                 row = line.rstrip().split('\t')
@@ -417,7 +442,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                                     out.write('\t'.join(row)+'\n')
             else:  #user file was in BED format
                 with open(auxFile) as f:
-                    with open(outDir+prefix+'cgc.gff', 'w') as out:
+                    with open(os.path.join(outDir, prefix, 'cgc.gff'), 'w') as out:
                         for line in f:
                             if line.startswith("track"):
                                 continue
@@ -448,9 +473,9 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         ####################
         # Begin CGCFinder call
 
-        # call(['CGCFinder.py', outDir+prefix+'cgc.gff', '-o', outDir+prefix+'cgc.out', '-s', args.cgc_sig_genes, '-d', str(args.cgc_dis)])
-        cgc_finder(outDir+prefix+'cgc.gff', cgc_dis, cgc_sig_genes, outDir+prefix+'cgc.out')
-        simplify_output(outDir+prefix+'cgc.out')
+        # call(['CGCFinder.py', os.path.join(outDir, prefix, 'cgc.gff'), '-o', os.path.join(outDir, prefix, 'cgc.out'), '-s', args.cgc_sig_genes, '-d', str(args.cgc_dis)])
+        cgc_finder(os.path.join(outDir, prefix, 'cgc.gff'), cgc_dis, cgc_sig_genes, os.path.join(outDir, prefix, 'cgc.out'))
+        simplify_output(os.path.join(outDir, prefix, 'cgc.out'))
         print("**************************************CGC-Finder end***********************************************")
         # End CGCFinder call
         # End CGCFinder
@@ -458,39 +483,48 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     # Begin SignalP combination
     if use_signalP:
         print("Waiting on signalP")
-        with open(outDir+prefix+'temp', 'w') as out:
+        with open(os.path.join(outDir, prefix, 'temp'), 'w') as out:
             if gram == "all" or gram =="p":
                 signalpos.wait()
                 print("SignalP pos complete")
 
-                with open(outDir+prefix+'signalp.pos') as f:
+                with open(os.path.join(outDir, prefix, 'signalp.pos')) as f:
                     for line in f:
                         if not line.startswith('#'):
                             row = line.split(' ')
                             row = [x for x in row if x != '']
                             if row[9] == 'Y':
                                 out.write(line)
-                call(['rm', outDir+prefix+'signalp.pos'])
+                os.remove(os.path.join(outDir, prefix, 'signalp.pos'))
             if gram == "all" or gram == "n":
                 signalpneg.wait()
                 print("SignalP neg complete")
-                with open(outDir+prefix+'signalp.neg') as f:
+                with open(os.path.join(outDir, prefix, 'signalp.neg')) as f:
                     for line in f:
                         if not line.startswith('#'):
                             row = line.split(' ')
                             row = [x for x in row if x != '']
                             if row[9] == 'Y':
                                 out.write(line)
-                call(['rm', outDir+prefix+'signalp.neg'])
-        call('sort -u '+outDir+prefix+'temp > '+outDir+prefix+'signalp.out', shell=True)
-        call(['rm', outDir+prefix+'temp'])
+                os.remove(os.path.join(outDir, prefix, 'signalp.neg'))
+        signalp_in_path = os.path.join(outDir, prefix, 'temp')
+        signalp_out_path = os.path.join(outDir, prefix, 'signalp.out')
+        if sys.platform.__contains__("win"):
+            # todo: test this windows code
+            wsl_in_path = subprocess.run(f"wsl wslpath '{signalp_in_path}'", capture_output=True, check=True).stdout.decode().strip()
+            args = f'wsl sort -u {wsl_in_path} > {signalp_out_path}'
+        else:
+            args = f'sort -u {signalp_in_path} > {signalp_out_path}'
+        subprocess.run(args, shell=True, check=True)
+        # call('sort -u '+outDir+prefix+'temp > '+outDir+prefix+'signalp.out', shell=True)
+        os.remove(os.path.join(outDir, prefix, 'temp'))
 
     # End SignalP combination
     #######################
     #######################
     # start Overview
     print("Preparing overview table from hmmer, eCAMI and diamond output...")
-    workdir = outDir+prefix
+    workdir = os.path.join(outDir, prefix)
     # a function to remove duplicates from lists while keeping original order
     def unique(seq):
         exists = set()
@@ -501,19 +535,19 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
 
     # check if files exist. if so, read files and get the gene numbers
     if tools[0]:
-        arr_diamond = open(workdir+"diamond.out").readlines()
+        arr_diamond = open(os.path.join(workdir, "diamond.out")).readlines()
         diamond_genes = [arr_diamond[i].split()[0] for i in range(1, len(arr_diamond))] # or diamond_genes = []
 
     if tools[1]:
-        arr_hmmer = open(workdir+"hmmer.out").readlines()
+        arr_hmmer = open(os.path.join(workdir, "hmmer.out")).readlines()
         hmmer_genes = [arr_hmmer[i].split()[2] for i in range(1, len(arr_hmmer))] # or hmmer_genes = []
 
     if tools[2]:
-        arr_eCAMI = open(workdir+"eCAMI.out").readlines()
+        arr_eCAMI = open(os.path.join(workdir, "eCAMI.out")).readlines()
         eCAMI_genes = [arr_eCAMI[i].split()[0] for i in range(1, len(arr_eCAMI))]# or eCAMI_genes = []
 
-    if use_signalP and (os.path.exists(workdir + "signalp.out")):
-        arr_sigp = open(workdir+"signalp.out").readlines()
+    if use_signalP and (os.path.exists(os.path.join(workdir, "signalp.out"))):
+        arr_sigp = open(os.path.join(workdir, "signalp.out")).readlines()
         sigp_genes = {}
         for i in range (0,len(arr_sigp)):
             row = arr_sigp[i].split()
@@ -540,7 +574,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                 diamond_genes = unique(diamond_genes)
     ## Catie edits END, Le add variable exists or not, remove duplicates from input lists
 
-    # parse input, stroe needed variables
+    # parse input, store needed variables
     if tools[0] and (len(arr_diamond) > 1):
         diamond_fams = {}
         for i in range (1,len(arr_diamond)):
@@ -587,7 +621,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
 
     all_genes = unique(hmmer_genes+eCAMI_genes+diamond_genes)
 
-    with open(workdir+"overview.txt", 'w+') as fp:
+    with open(os.path.join(workdir, "overview.txt"), 'w+') as fp:
         if use_signalP:
             fp.write("Gene ID\tEC#\tHMMER\teCAMI\tDIAMOND\tSignalp\t#ofTools\n")
         else:
@@ -629,7 +663,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
             csv.append(str(num_tools))
             temp = "\t".join(csv) + "\n"
             fp.write(temp)
-    print("overview table complete. Saved as "+workdir+"overview.txt")
+    print("Overview table complete. Saved as " + os.path.join(workdir, "overview.txt"))
     # End overview
 
 

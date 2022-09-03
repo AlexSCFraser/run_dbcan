@@ -11,7 +11,6 @@ import numpy as np
 import os
 import datetime
 import re
-#import psutil
 import argparse,sys
 from multiprocessing import Pool
 # add by Le Nov 14, 2021
@@ -19,7 +18,7 @@ from multiprocessing import Pool
 # from eCAMI_data import eCAMI_data_path
 #add by Le Nov 14, 2021 end
 def read_file(database_dir,input_fasta_file):
-    f = open(database_dir +input_fasta_file, 'r')
+    f = open(os.path.join(database_dir, input_fasta_file), 'r')
     text=f.read()
     f.close()
     text=text.split('\n')
@@ -67,9 +66,9 @@ def get_kmer_dict(n_mer_dir_path):
         kmer_label=[]
         kmer_message=[]
         all_cluster_kmer=[]
-        kmer_file_list=os.listdir(dir_name+'/'+kmer_dir_list[k]+'/kmer_for_each_cluster')
+        kmer_file_list=os.listdir(os.path.join(dir_name, kmer_dir_list[k], 'kmer_for_each_cluster'))
         for each_file in kmer_file_list:
-            f=open(dir_name+'/'+kmer_dir_list[k]+'/kmer_for_each_cluster'+'/'+each_file,'r')
+            f=open(os.path.join(dir_name, kmer_dir_list[k], 'kmer_for_each_cluster', each_file), 'r')
             text=f.read()
             text=text.split('\n')
             f.close()
@@ -118,8 +117,7 @@ def write_line(selected_fam_message,temp_protein_string):
 
 def get_cluster_number(file_name,fam_kmer_dict,output_dir,n_mer,piece_number,protein_name,protein_string,important_n_mer_number,beta):
 
-
-    fw=open(output_dir+file_name,'w')
+    fw = open(os.path.join(output_dir, file_name), 'w')
     for i in piece_number:
         kmer=[]
         for j in range(n_mer):
@@ -187,13 +185,81 @@ def get_cluster_number(file_name,fam_kmer_dict,output_dir,n_mer,piece_number,pro
     fw.close()
 
 
+def get_cluster_number_no_IO(file_name,fam_kmer_dict,output_dir,n_mer,piece_number,protein_name,protein_string,important_n_mer_number,beta):
+    text_output = ""
+    # fw = open(os.path.join(output_dir, file_name), 'w')
+    for i in piece_number:
+        kmer=[]
+        for j in range(n_mer):
+            text=protein_string[i][j:len(protein_string[i])]
+            kmer+=re.findall('.{'+str(n_mer)+'}', text)
+        kmer=list(set(kmer))
+        selected_fam_dict={}
+        sort_fam=[]
+        for each_fam in fam_kmer_dict.keys():
+            all_cluster_kmer=fam_kmer_dict[each_fam][2]
+            kmer_message=fam_kmer_dict[each_fam][1]
+            kmer_label=fam_kmer_dict[each_fam][0]
+            each_cluster_score=[]
+
+            for j in range(len(all_cluster_kmer)):
+                score=0
+                number_score=0
+                each_cluster_kmer=all_cluster_kmer[j]
+                same_kmer=list(set(kmer).intersection(set(each_cluster_kmer.keys())))
+                temp_same_kmer=same_kmer[:]
+                for k in temp_same_kmer:
+                    number_score+=each_cluster_kmer[k]
+                score+=len(same_kmer)
+                if score:
+                    each_cluster_score.append([j,score,number_score,same_kmer])
+
+            if len(each_cluster_score)==0:
+                continue
+            each_cluster_score=sorted(each_cluster_score,key=(lambda x:x[2]),reverse=True)
+            each_cluster_score=sorted(each_cluster_score,key=(lambda x:x[1]),reverse=True)
+            if each_cluster_score[0][2]>=beta and each_cluster_score[0][1]>=important_n_mer_number:
+                sort_fam.append([each_cluster_score[0][1],each_cluster_score[0][2],each_fam])
+                selected_fam_dict[each_fam]=[each_cluster_score[0][1]], \
+                                            each_cluster_score[0][2],each_cluster_score[0][3], \
+                                            kmer_message[each_cluster_score[0][0]],kmer_label[each_cluster_score[0][0]]
+        if len(sort_fam)==0:
+            continue
+        sort_fam=sorted(sort_fam,key=(lambda x:x[1]),reverse=True)
+        sort_fam=sorted(sort_fam,key=(lambda x:x[0]),reverse=True)
 
 
+        first_fam=sort_fam[0][2]
+        fam_key=list(selected_fam_dict.keys())
+        fam_key.remove(first_fam)
+        for each_fam_key in fam_key:
+            if len(set(list(''.join(selected_fam_dict[each_fam_key][2]))))<5:
+                del selected_fam_dict[each_fam_key]
+        flag=len(first_fam.split('.'))
+        # fw.write(protein_name[i]+'\t'+write_line(selected_fam_dict[first_fam],protein_string[i]))
+        text_output += protein_name[i] + '\t' + write_line(selected_fam_dict[first_fam],protein_string[i])
+        used_fam=[first_fam]
+        other_fams=selected_fam_dict[first_fam][3]
+        other_fams=other_fams.split('|')
+        for each_fam in other_fams:
+            temp_fam=each_fam.split(':')
+            temp_name=temp_fam[0].split('_')[0]
+            if flag>1:
+                temp_name=temp_name.split('.')
+                temp_name='.'.join(temp_name[0:flag])
+            if len(temp_fam)==2 and temp_name not in used_fam:
+                used_fam.append(temp_fam[0].split('_')[0])
+                if int(temp_fam[1])>1 and temp_name in selected_fam_dict.keys():
+                    # fw.write(protein_name[i]+'\t'+write_line(selected_fam_dict[temp_name],protein_string[i]))
+                    text_output += protein_name[i] + '\t' + write_line(selected_fam_dict[temp_name], protein_string[i])
+
+    return text_output
+    # fw.close()
 
 
 def get_validation_results(input_fasta_file,database_dir,output_dir,output_file_name,n_mer,important_n_mer_number,beta,fam_kmer_dict,jobs):
-    if database_dir:
-        database_dir=database_dir+'/'
+    # if database_dir:
+    #     database_dir=database_dir+'/'    #     Not needed with os.path.join, makes the code multiplatform
     [protein_name,protein_string] = read_file(database_dir,input_fasta_file)
 
     # Simple method to make multiple folders along path if needed, should handle both relative and absolute paths.
@@ -201,30 +267,41 @@ def get_validation_results(input_fasta_file,database_dir,output_dir,output_file_
     # paths and create a huge empty folder structure as a subdirectory of the current working directory.
     out_dir_abs = os.path.abspath(output_dir)
     os.makedirs(out_dir_abs, exist_ok=True)
-    temp_output_dir = output_dir
+    # temp_output_dir = output_dir
 
     pred_file_name=output_file_name
-    if temp_output_dir:
-        temp_output_dir=output_dir+'/'
+
+    # if temp_output_dir:
+    #     temp_output_dir=output_dir+'/' #     Not needed with os.path.join, makes the code multiplatform
 
     pool = Pool(processes=jobs)
     piece_number=np.array_split(list(range(len(protein_name))),jobs)
+
+
+    # args_iterable = [(f"{input_fasta_file}_thread_{i}.txt",fam_kmer_dict,output_dir,n_mer,piece_number[i],protein_name,protein_string,important_n_mer_number,beta) for i in range(jobs)]
+    #
+    # all_text = pool.starmap(get_cluster_number_no_IO, args_iterable, chunksize=1)
+    # with open(os.path.join(output_dir, pred_file_name), 'w') as fw:
+    #     fw.write(''.join(all_text))
 
     for i in range(jobs):
         file_name=input_fasta_file+'_thread_'+str(i)+'.txt'
         #        get_cluster_number(file_name,fam_kmer_dict,temp_output_dir,n_mer,piece_number[i],protein_name,protein_string,important_n_mer_number,beta)
 
-        pool.apply_async(get_cluster_number, (file_name,fam_kmer_dict,temp_output_dir,n_mer,piece_number[i],protein_name,protein_string,important_n_mer_number,beta,))
+        pool.apply_async(get_cluster_number, (file_name,fam_kmer_dict,output_dir,n_mer,piece_number[i],protein_name,protein_string,important_n_mer_number,beta))
     pool.close()
     pool.join()
-    fw=open(temp_output_dir+pred_file_name,'w')
-    for i in range(jobs):
-        f=open(temp_output_dir+input_fasta_file+'_thread_'+str(i)+'.txt')
-        text=f.read()
-        f.close()
-        fw.write(text)
-        os.remove(temp_output_dir+input_fasta_file+'_thread_'+str(i)+'.txt')
-    fw.close()
+    print("after pool.join", file=sys.stderr)
+
+    with open(os.path.join(output_dir, pred_file_name), 'w') as fw:
+        for i in range(jobs):
+            print(i, file=sys.stderr)
+            with open(os.path.join(output_dir, input_fasta_file+'_thread_'+str(i)+'.txt')) as f:
+                text = f.read()
+            fw.write(text)
+            os.remove(os.path.join(output_dir, input_fasta_file+'_thread_'+str(i)+'.txt'))
+
+    pass
 
 
 
@@ -259,18 +336,18 @@ class eCAMI_config(object):
     def __init__(
             self,
             db_type = 'CAZyme',
-            output = 'examples/prediction/output/test_pred_cluster_labels.txt',
-            input = 'examples/prediction/input/test.faa',
+            output = os.path.join('examples', 'prediction', 'output', 'test_pred_cluster_labels.txt'),
+            input = os.path.join('example', 'prediction', 'input', 'test.faa'),
             k_mer = 8,
             jobs = 8,
             important_k_mer_number = 5,
             beta = 2.0
     ) -> None:
         if db_type == 'CAZyme':
-            self.kmer_db = f'{os.path.dirname(__file__)}/CAZyme'
+            self.kmer_db = os.path.join(f'{os.path.dirname(__file__)}', 'CAZyme')
         else:
             # print(__file__)
-            self.kmer_db = f'{os.path.dirname(__file__)}/EC'
+            self.kmer_db = os.path.join(f'{os.path.dirname(__file__)}', 'EC')
         # print(self.kmer_db)
         self.output = output
         self.input = input
