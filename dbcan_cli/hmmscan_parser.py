@@ -16,8 +16,8 @@
 # This file had to be renamed from "hmmscan-parser.py" to "hmmscan_parser.py" because of python module import conventions.
 # Modified on 07/06/22
 #
-# Modified by Alex Fraser to be a pure python implementation, completely removing the requirement to be on a UNIX system.
-# This makes it portable across UNIX and windows, makes it more readable, and allows for easier debugging if changes are made.
+# Modified by Alex Fraser to be a pure python implementation, completely removing the UNIX system requirement.
+# This makes it portable across UNIX and windows, more readable, and allows for interactive debugging.
 # 02/09/22
 #
 # INPUT
@@ -44,8 +44,8 @@ def parse_hmmer_file(filename):
 		for line in f:
 			if line[0] != '#':
 				line_array = space_re.sub(" ", line).split(' ')
-				if line_array[17] == line_array[18]:
-					pass  # skip modules with same start and end index, they are erroneous
+				if line_array[17] == line_array[18]:  # Same function as the "next if $a[-1] == $a[-2];" line in old perl code
+					pass  # skip modules with same start and end index, they are erroneous hits
 				else:
 					data.append(
 						[line_array[0], int(line_array[2]), line_array[3], int(line_array[5]), float(line_array[12]),

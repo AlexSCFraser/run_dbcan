@@ -36,16 +36,27 @@ def some functions
 
 
 def runHmmScan(outPath, hmm_cpu, dbDir, hmm_eval, hmm_cov, db_name):
-    hmmer = Popen(['hmmscan', '--domtblout', '%sh%s.out' % (outPath, db_name), '--cpu', hmm_cpu, '-o', '/dev/null', '%s%s.hmm' % (dbDir,db_name), '%suniInput' % outPath])
-    hmmer.wait()
+    temp_file_path = os.path.join(outPath, f"h{db_name}.out")
+    out_file_path = os.path.join(outPath, f"{db_name}.out")
+    db_path = os.path.join(dbDir, f"{db_name}.hmm")
+    uniInput_path = os.path.join(outPath, "uniInput")
+    if sys.platform.__contains__("win"):
+
+        win_temp_path = subprocess.run(f"wsl wslpath '{temp_file_path}'", capture_output=True, check=True).stdout.decode().strip()
+        win_db_path = subprocess.run(f"wsl wslpath '{db_path}'", capture_output=True, check=True).stdout.decode().strip()
+        win_uniInput_path = subprocess.run(f"wsl wslpath '{uniInput_path}'", capture_output=True, check=True).stdout.decode().strip()
+        subprocess.run(["wsl", "hmmscan", "--domtblout", win_temp_path, "--cpu", str(hmm_cpu), "-o", "/dev/null", win_db_path, win_uniInput_path], check=True)
+
+    else:
+        subprocess.run(['hmmscan', '--domtblout', temp_file_path, '--cpu', hmm_cpu, '-o', '/dev/null', db_path, uniInput_path], check=True)
     # call('hmmscan_parser.py %sh%s.out %s %s > %s%s.out'%(outPath, db_name, hmm_eval, hmm_cov, outPath, db_name), shell=True)
-    parsed_hmm_output = hmmscan_parser.run(input_file=f"{outPath}h{db_name}.out", eval_num=hmm_eval, coverage=hmm_cov)
-    with open(f"{outPath}{db_name}.out", 'w') as f:
+    parsed_hmm_output = hmmscan_parser.run(input_file=temp_file_path, eval_num=hmm_eval, coverage=hmm_cov)
+    with open(out_file_path, 'w') as f:
         f.write(parsed_hmm_output)
 
-    if os.path.exists('%sh%s.out' % (outPath, db_name)):
+    if os.path.exists(temp_file_path):
         # call(['rm', '%sh%s.out' % (outPath, db_name)]) #todo: remove this line after ensuring below works properly
-        os.remove(f"{outPath}h{db_name}.out")
+        os.remove(temp_file_path)
 
 
 def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-102, dia_cpu=4, hmm_eval=1e-15,
@@ -77,6 +88,15 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
             raise UserWarning("WSL not installed, please install Windows Subsystem for Linux") from f_error
         except subprocess.CalledProcessError as c_error:
             raise UserWarning("HMMER not installed on WSL installation. Please install HMMER on your WSL instance.")
+
+        try:
+            if use_signalP:
+                test = subprocess.run("wsl signalp -h", capture_output=True, check=True)
+        except FileNotFoundError as f_error:
+            raise UserWarning("WSL not installed, please install Windows Subsystem for Linux") from f_error
+        except subprocess.CalledProcessError as c_error:
+            if not c_error.stderr.decode().__contains__("Usage of signalp"):
+                raise UserWarning("signalp not installed on WSL installation. Please install signalp on your WSL instance.")
 
     outPath = os.path.join(outDir, prefix)
     auxFile = ""
@@ -129,9 +149,9 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     #########################
     # Begin Gene Prediction Tools
     if inputType == 'prok':
-        call(['prodigal', '-i', inputFile, '-a', '%suniInput'%outPath, '-o', '%sprodigal.gff'%outPath, '-f', 'gff', '-q'])
+        call(['prodigal', '-i', inputFile, '-a', os.path.join(outPath, "uniInput"), '-o', os.path.join(outPath, 'prodigal.gff'), '-f', 'gff', '-q'])
     if inputType == 'meta':
-        call(['prodigal', '-i', inputFile, '-a', '%suniInput'%outPath, '-o', '%sprodigal.gff'%outPath, '-f', 'gff', '-p', 'meta','-q'])
+        call(['prodigal', '-i', inputFile, '-a', os.path.join(outPath, "uniInput"), '-o', os.path.join(outPath, 'prodigal.gff'), '-f', 'gff', '-p', 'meta','-q'])
     #Proteome
     if inputType == 'protein':
         shutil.copy(inputFile, os.path.join(outDir, "uniInput"))
@@ -139,12 +159,23 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     # End Gene Prediction Tools
     #######################
     # Begin SignalP
+    # todo: test WSL support
     if use_signalP:
         print("\n\n***************************0. SIGNALP start*************************************************\n\n")
+        input_path = os.path.join(outPath, "uniInput")
+        if sys.platform.__contains__("win"):
+            input_path = subprocess.run(f"wsl wslpath '{input_path}'", capture_output=True, check=True).stdout.decode().strip()
+
         if gram == "p" or gram=="all":
-            signalpos = Popen('%s -t gram+ %suniInput > %ssignalp.pos' % (signalP_path, outPath, outPath), shell=True)
+            gram_p_args = f'{signalP_path} -t gram+ {input_path} > {os.path.join(outPath, "signalp.pos")}'
+            if sys.platform.__contains__("win"):
+                gram_p_args = "wsl " + gram_p_args
+            signalpos = Popen(gram_p_args, shell=True)
         if gram == "n" or gram == "all":
-            signalpneg = Popen('%s -t gram- %suniInput > %ssignalp.neg' % (signalP_path, outPath, outPath), shell=True)
+            gram_n_args = f'{signalP_path} -t gram- {input_path} > {os.path.join(outPath, "signalp.neg")}'
+            if sys.platform.__contains__("win"):
+                gram_n_args = "wsl " + gram_n_args
+            signalpneg = Popen(gram_n_args, shell=True)
 
     # End SignalP
     #######################
@@ -153,7 +184,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     if tools[0]:
         # diamond blastp -d db/CAZy -e 1e-102 -q output_EscheriaColiK12MG1655/uniInput -k 1 -p 2 -o output_EscheriaColiK12MG1655/diamond1.out -f 6
         print("\n\n***************************1. DIAMOND start*************************************************\n\n")
-        temp_proc = subprocess.run(f'diamond blastp -d {os.path.join(dbDir, "CAZy")} -e {str(dia_eval)} -q {os.path.join(outPath, "uniInput")} -k 1 -p {dia_cpu} -o {os.path.join(outPath, "diamond.out")} -f 6', check=True)
+        temp_proc = subprocess.run(f'diamond blastp -d {os.path.join(dbDir, "CAZy")} -e {str(dia_eval)} -q {os.path.join(outPath, "uniInput")} -k 1 -p {dia_cpu} -o {os.path.join(outPath, "diamond.out")} -f 6', check=True, stderr=sys.stderr)
 
         # os.system('diamond blastp -d %s -e %s -q %suniInput -k 1 -p %d -o %sdiamond.out -f 6'%(os.path.join(dbDir, "CAZy"), str(dia_eval), outPath, dia_cpu, outPath))
         # diamond = Popen(['diamond', 'blastp', '-d', '%sCAZy.dmnd' % dbDir, '-e', str(args.dia_eval), '-q', '%suniInput' % outPath, '-k', '1', '-p', str(args.dia_cpu), '-o', '%sdiamond.out'%outPath, '-f', '6'])
@@ -165,7 +196,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
             win_hpath = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'h.out')}'", capture_output=True, check=True).stdout.decode().strip()
             win_dbpath = subprocess.run(f"wsl wslpath '{os.path.join(dbDir, dbCANFile)}'", capture_output=True, check=True).stdout.decode().strip()
             win_outpath = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'uniInput')}'", capture_output=True, check=True).stdout.decode().strip()
-            subprocess.run(f"wsl hmmscan --domtblout {win_hpath} --cpu {hmm_cpu} -o /dev/null {win_dbpath} {win_outpath}")
+            subprocess.run(f"wsl hmmscan --domtblout {win_hpath} --cpu {hmm_cpu} -o /dev/null {win_dbpath} {win_outpath}", check=True)
         else:
             # os.system(f"hmmscan --domtblout {os.path.join(outPath, 'h.out')} --cpu {hmm_cpu} -o /dev/null {os.path.join(dbDir, dbCANFile)} {os.path.join(outPath, 'uniInput')} ")
             subprocess.run(f"hmmscan --domtblout {os.path.join(outPath, 'h.out')} --cpu {hmm_cpu} -o /dev/null {os.path.join(dbDir, dbCANFile)} {os.path.join(outPath, 'uniInput')}", check=True)
@@ -663,6 +694,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
             csv.append(str(num_tools))
             temp = "\t".join(csv) + "\n"
             fp.write(temp)
+
     print("Overview table complete. Saved as " + os.path.join(workdir, "overview.txt"))
     # End overview
 
