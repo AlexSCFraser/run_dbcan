@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.6, 3.7, 3.8, 3.9]
+        python-version: [3.7, 3.8, 3.9]
 
     steps:
       - uses: actions/checkout@v2
@@ -28,8 +28,7 @@ jobs:
         run: |
           conda install -c anaconda -y conda-build
           conda install -y wget
-          conda install -c bioconda -y diamond hmmer prodigal
-          pip install dbcan
+          conda install -c bioconda -y dbcan
       - name: Test
         run: |
           run_dbcan --help
