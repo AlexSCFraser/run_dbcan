@@ -13,7 +13,7 @@ long_description = """This is the standalone version of dbCAN annotation tool fo
 
 setup(name='dbcan',
       # The version number also exists in meta.yaml
-      version="3.0.8dev0",
+      version="4.0.1.dev0",
       description='Standalone version of dbCAN annotation tool for automated CAZyme annotation',
       long_description=long_description,
       author='Tanner Yohe, Le Huang, Qiwei Ge, and Haidong Yi',
