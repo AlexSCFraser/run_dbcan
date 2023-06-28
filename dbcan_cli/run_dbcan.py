@@ -19,7 +19,7 @@
 # Predicts genes if needed
 # Runs input against HMMER, DIAMOND, and dbCAN_sub
 # Optionally predicts CGCs with CGCFinder
-# Creats an overview table using output files from core
+# Creates an overview table using output files from core
 # tools from dbsub.out,hmmer.out and diamond.out
 ##########################################################
 import shutil
@@ -35,6 +35,9 @@ from dbcan_cli import hmmscan_parser
 import time
 from dbcan.utils.cgc_substrate_prediction import cgc_substrate_prediction
 
+
+def convert_path_wsl(path: str):
+    return subprocess.run(f"wsl wslpath '{path}'", capture_output=True, check=True).stdout.decode().strip()
 
 def runHmmScan(outPath, hmm_cpu, dbDir, hmm_eval, hmm_cov, db_name):
     temp_file_path = os.path.join(outPath, f"h{db_name}.out")
@@ -86,51 +89,74 @@ def split_uniInput(uniInput,dbcan_thread,outPath,dbDir,hmm_eval,hmm_cov):
 
     if signal_count >= min_files:
         for i in range(fsize):
-            f = open("%s%s.txt"%(outPath,i),"w")
+            f = open(os.path.join(outPath,f"{i}.txt"),"w") #todo fix for windows
             f.close()
             split_files.append("%s.txt"%i)
         for i in range(len(uniInput_file)):
             if ">" in uniInput_file[i]:
                 file_number = i%fsize
-                f = open('%s%s.txt'%(outPath,file_number), 'a')
+                f = open(os.path.join(outPath, f'{file_number}.txt'), 'a') #todo fix for windows
                 f.write(uniInput_file[i])
                 f.close()
             else:
-                f = open('%s%s.txt'%(outPath,file_number), 'a')
+                f = open(os.path.join(outPath, f'{file_number}.txt'), 'a') #todo fix for windows
                 f.write(uniInput_file[i])
                 f.close()
 
         ths = []
         for j in split_files:
-            ths.append(Popen(['hmmscan', '--domtblout', '%sd%s'%(outPath,j), '--cpu', '5', '-o', '/dev/null', '%sdbCAN_sub.hmm'%dbDir, "%s%s"%(outPath,j)]))
+            if sys.platform.__contains__("win"):
+                wsl_temp_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, f'd{j}')}'", capture_output=True, check=True).stdout.decode().strip()
+                wsl_db_path = subprocess.run(f"wsl wslpath '{os.path.join(dbDir, 'dbCAN_sub.hmm')}'", capture_output=True, check=True).stdout.decode().strip()
+                wsl_uniInput_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, j)}'", capture_output=True, check=True).stdout.decode().strip()
+                ths.append(Popen(["wsl", "hmmscan", "--domtblout", wsl_temp_path, "--cpu", '5', "-o", "/dev/null", wsl_db_path, wsl_uniInput_path]))
+            #todo test for windows
+            else:
+                #ths.append(Popen(['hmmscan', '--domtblout', '%sd%s'%(outPath,j), '--cpu', '5', '-o', '/dev/null', '%sdbCAN_sub.hmm'%dbDir, "%s%s"%(outPath,j)]))
+                ths.append(Popen(['hmmscan', '--domtblout', os.path.join(outPath, f'd{j}'), '--cpu', '5', '-o', '/dev/null', os.path.join(dbDir, "dbCAN_sub.hmm"), os.path.join(outPath, j)]))
         for th in ths:
             th.wait()
 
+        parsed_hmmer_output = ""
         for m in split_files:
-            hmm_parser_output = hmmscan_parser.run("%sd%s"%(outPath,m), eval_num=hmm_eval, coverage=hmm_cov)
-            with open("%stemp_%s"%(outPath,m), 'w') as temp_hmmer_file:
+            #hmm_parser_output = hmmscan_parser.run("%sd%s"%(outPath,m), eval_num=hmm_eval, coverage=hmm_cov)
+            hmm_parser_output = hmmscan_parser.run(os.path.join(outPath, f"d{m}"), eval_num=hmm_eval, coverage=hmm_cov)
+            with open(os.path.join(outPath, f"temp_{m}"), 'w') as temp_hmmer_file: #todo don't even write these files!
                 temp_hmmer_file.write(hmm_parser_output)
-            call(['rm', '%sd%s'%(outPath,m)])
-            call(['rm', '%s%s'%(outPath,m)]) #remove temporary files
+                parsed_hmmer_output += hmm_parser_output
+            os.remove(os.path.join(outPath,f"d{m}"))
+            os.remove(os.path.join(outPath, m))
 
-        f = open("%sdtemp.out"%outPath,"w")
+        f = open(os.path.join(outPath, "dtemp.out"),"w") #todo don't even write these files!
         f.close()
 
         for n in split_files:
-            file_read = open("%stemp_%s"%(outPath,n),"r")
+            file_read = open(os.path.join(outPath, f"temp_{n}"),"r") #todo fix for windows
             files_lines = file_read.readlines()
             file_read.close()
-            call(['rm', "%stemp_%s"%(outPath,n)]) #remove temporary files
+            # call(['rm', "%stemp_%s"%(outPath,n)]) #remove temporary files #todo delete
+            os.remove(os.path.join(outPath, f"temp_{n}"))
             for j in range(len(files_lines)):
-                f = open("%sdtemp.out"%outPath,"a")
+                f = open(os.path.join(outPath, "dtemp.out"),"a") #todo don't even write these files!
                 f.write(files_lines[j])
                 f.close()
-    else:
-        dbsub = Popen(['hmmscan', '--domtblout', '%sd.txt'%outPath, '--cpu', '5', '-o', '/dev/null', '%sdbCAN_sub.hmm'%dbDir, '%suniInput'%outPath])
-        dbsub.wait()
 
-        hmm_parser_output = hmmscan_parser.run("%sd.txt"%outPath, eval_num=hmm_eval, coverage=hmm_cov)
-        with open("%sdtemp.out"%outPath, 'w') as temp_hmmer_file:
+        with open(os.path.join(outPath, "dtemp2.out")) as file:
+            file.write(parsed_hmmer_output)
+        pass
+    else:
+        if sys.platform.__contains__("win"):
+            wsl_temp_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'd.txt')}'", capture_output=True, check=True).stdout.decode().strip()
+            wsl_db_path = subprocess.run(f"wsl wslpath '{os.path.join(dbDir, 'dbCAN_sub.hmm')}'", capture_output=True, check=True).stdout.decode().strip()
+            wsl_uniInput_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'uniInput')}'", capture_output=True, check=True).stdout.decode().strip()
+            subprocess.run(["wsl", "hmmscan", "--domtblout", wsl_temp_path, "--cpu", '5', "-o", "/dev/null", wsl_db_path, wsl_uniInput_path], check=True)
+            #todo fix for windows
+        else:
+            dbsub = Popen(['hmmscan', '--domtblout', '%sd.txt'%outPath, '--cpu', '5', '-o', '/dev/null', '%sdbCAN_sub.hmm'%dbDir, '%suniInput'%outPath])
+            dbsub.wait()
+
+        hmm_parser_output = hmmscan_parser.run(os.path.join(outPath, "d.txt"), eval_num=hmm_eval, coverage=hmm_cov) #todo fix for windows
+        with open(os.path.join(outPath, "dtemp.out"), 'w') as temp_hmmer_file:  #todo fix for windows
             temp_hmmer_file.write(hmm_parser_output)
 
     print("total time:",time.time() - ticks)
@@ -156,7 +182,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     if sys.platform.__contains__("win"):
         # Check WSL for required programs before continuing on windows
         try:
-            test = subprocess.run("wsl hmmscan -h", capture_output=True, check=True)
+            subprocess.run("wsl hmmscan -h", capture_output=True, check=True)
         except FileNotFoundError as f_error:
             raise UserWarning("WSL not installed, please install Windows Subsystem for Linux") from f_error
         except subprocess.CalledProcessError as c_error:
@@ -164,7 +190,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
 
         try:
             if use_signalP:
-                test = subprocess.run("wsl signalp -h", capture_output=True, check=True)
+                subprocess.run("wsl signalp -h", capture_output=True, check=True)
         except FileNotFoundError as f_error:
             raise UserWarning("WSL not installed, please install Windows Subsystem for Linux") from f_error
         except subprocess.CalledProcessError as c_error:
@@ -238,27 +264,34 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     # End Gene Prediction Tools
     #######################
     # Begin SignalP
-    # todo: test WSL support
+    # todo: test WSL support for signalP
     if use_signalP:
         print("\n\n***************************0. SIGNALP start*************************************************\n\n")
         input_path = os.path.join(outPath, "uniInput")
+        pos_path = os.path.join(outPath, "signalp.pos")
+        neg_path = os.path.join(outPath, "signalp.neg")
+        euk_path = os.path.join(outPath, 'signalp.euk')
         if sys.platform.__contains__("win"):
-            input_path = subprocess.run(f"wsl wslpath '{input_path}'", capture_output=True, check=True).stdout.decode().strip()
+            input_path = convert_path_wsl(input_path)
+            pos_path = convert_path_wsl(pos_path)
+            neg_path = convert_path_wsl(neg_path)
 
         if gram == "p" or gram=="all":
-            gram_p_args = f'{signalP_path} -t gram+ {input_path} > {os.path.join(outPath, "signalp.pos")}'
+            gram_p_args = f'{signalP_path} -t gram+ {input_path} > {pos_path}'
             if sys.platform.__contains__("win"):
                 gram_p_args = "wsl " + gram_p_args
             signalpos = Popen(gram_p_args, shell=True)
         if gram == "n" or gram == "all":
-            gram_n_args = f'{signalP_path} -t gram- {input_path} > {os.path.join(outPath, "signalp.neg")}'
+            gram_n_args = f'{signalP_path} -t gram- {input_path} > {neg_path}'
             if sys.platform.__contains__("win"):
                 gram_n_args = "wsl " + gram_n_args
             signalpneg = Popen(gram_n_args, shell=True)
-            signalpneg = Popen('%s -t gram- %suniInput > %ssignalp.neg' % (signalP_path, outPath, outPath), shell=True)
         if gram == "euk" or gram=="all":
-            # todo: fix up new euk option to work with wsl
-            signalpeuk = Popen('%s -t euk %suniInput > %ssignalp.euk' % (signalP_path, outPath, outPath), shell=True)
+            euk_args = f"{signalP_path} -t euk {input_path} > {euk_path}"
+            if sys.platform.__contains__("win"):
+                euk_args = "wsl " + euk_args
+            signalpeuk = Popen(euk_args, shell=True)
+
 
     # End SignalP
     #######################
@@ -304,21 +337,21 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
             os.remove(os.path.join(outPath, "h.out"))
 
     if tools[2]:
-        # todo: fix dbcan_sub section to be windows freindly!
+        # todo: fix dbcan_sub section to be windows friendly!
         print("\n\n***************************3. dbCAN_sub start***************************************************\n\n")
-        split_uniInput('%suniInput'%outPath,dbcan_thread,outPath,dbDir,hmm_eval,hmm_cov)#todo fix for windows
+        split_uniInput(os.path.join(outPath, 'uniInput'), dbcan_thread, outPath, dbDir, hmm_eval, hmm_cov)#todo fix for windows
         print("\n\n***************************3. dbCAN_sub end***************************************************\n\n")
-        with open(f"{outPath}dtemp.out", 'r') as f: #todo fix for windows
-            with open('%sdbsub.out'%outPath, 'w') as out: #todo fix for windows
+        with open(os.path.join(outPath, "dtemp.out"), 'r') as f: #todo fix for windows
+            with open(os.path.join(outPath, "dbsub.out"), 'w') as out: #todo fix for windows
                 for line in f:
                     row = line.rstrip().split('\t')
                     row.append(float(int(row[6])-int(row[5]))/int(row[1]))
                     if float(row[4]) <= 1e-15 and float(row[-1]) >= 0.35:
                         out.write('\t'.join([str(x) for x in row]) + '\n')
-        with open(f"{outPath}dbsub.out", 'r+') as f: #formated GT2_ in hmmer.out #todo fix for windows
+        with open(os.path.join(outPath, "dbsub.out"), 'r+') as f: #formated GT2_ in hmmer.out #todo fix for windows
             text = f.read()
             f.close()
-            call(['rm', f"{outPath}dbsub.out"]) #todo fix for windows
+            os.remove(os.path.join(outPath, "dbsub.out"))
             text = text.split('\n')
             if '' in text:
                 text.remove('')
@@ -326,7 +359,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                 if 'GT2_' in text[i]:
                     profile = text[i].split('\t')[0].split('.')[0]
                     text[i] = text[i].replace(profile,'GT2')
-                with open(f"{outPath}dbsub.out", 'a') as f: #todo fix for windows
+                with open(os.path.join(outPath, "dbsub.out"), 'a') as f: #todo fix for windows
                     f.write(text[i]+'\n')
                     f.close()
     # End Core Tools
@@ -336,7 +369,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     # parse dbCAN_sub result
     if tools[2]:
         subs_dict = {}
-        with open(f"{dbDir}fam-substrate-mapping-08252022.tsv", 'r') as f:#todo fix for windows
+        with open(os.path.join(dbDir, "fam-substrate-mapping-08252022.tsv"), 'r') as f:#todo fix for windows
             next(f)
             for line in f:
                 r = line.split("\t")
@@ -344,8 +377,8 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                     subs_dict[r[2],"-"] = r[0]
                 else:
                     subs_dict[r[2],r[4].strip()] = r[0]
-        with open(f"{outPath}dbsub.out") as f: #todo fix for windows
-            with open(f"{outPath}temp", 'w') as out: #todo fix for windows
+        with open(os.path.join(outPath, "dbsub.out"), 'r') as f: #todo fix for windows
+            with open(os.path.join(outPath, "temp"), 'w') as out: #todo fix for windows
                 out.write('dbCAN subfam\tSubfam Composition\tSubfam EC\tSubstrate\tProfile Length\tGene ID\tGene Length\tE Value\tProfile Start\tProfile End\tGene Start\tGene End\tCoverage\n')
 
                 for line in f:
@@ -403,7 +436,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     # parse hmmer result
     if tools[1]:
         try:
-            with open(os.path.join(outDir, prefix, 'hmmer.out')) as f:
+            with open(os.path.join(outDir, prefix, 'hmmer.out'), 'r') as f:
                 with open(os.path.join(outDir, prefix, 'temp'), 'w') as out:
                     out.write('HMM Profile\tProfile Length\tGene ID\tGene Length\tE Value\tProfile Start\tProfile End\tGene Start\tGene End\tCoverage\n')
                     for line in f:
@@ -535,7 +568,6 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                     if row[5] not in cazyme_genes:
                         cazyme_genes[row[5]] = set()
                         cazyme_genes[row[5]].add(row[0])
-
 
         if tools.count(True) > 1:
             temp1 = hmm.intersection(dbs)
@@ -679,7 +711,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     if use_signalP: ### signalP
         print("Waiting on signalP")
         with open(os.path.join(outDir, prefix, 'temp'), 'w') as out:
-            if gram == "all" or gram =="p":
+            if gram == "all" or gram == "p":
                 signalpos.wait()
                 print("SignalP pos complete")
 
@@ -755,7 +787,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     if use_signalP and (os.path.exists(os.path.join(workdir, "signalp.out"))):
         arr_sigp = open(os.path.join(workdir, "signalp.out")).readlines()
         sigp_genes = {}
-        for i in range (0,len(arr_sigp)):
+        for i in range(0,len(arr_sigp)):
             row = arr_sigp[i].split()
             sigp_genes[row[0]] = row[4] #previous one is row[2], use Y-score instead from suggestion of Dongyao Li
 
