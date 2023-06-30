@@ -49,7 +49,8 @@ setup(name='dbcan',
           'setuptools',
           'scipy',
           'psutil',
-          'numpy'
+          'numpy',
+          'biopython'
       ],
       python_requires='>=3.5',
       zip_safe=False
