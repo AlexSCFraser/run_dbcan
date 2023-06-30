@@ -50,7 +50,8 @@ setup(name='dbcan',
           'scipy',
           'psutil',
           'numpy',
-          'biopython'
+          'biopython',
+          "pandas"
       ],
       python_requires='>=3.5',
       zip_safe=False
