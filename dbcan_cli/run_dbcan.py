@@ -117,13 +117,11 @@ def split_uniInput(uniInput,dbcan_thread,outPath,dbDir,hmm_eval,hmm_cov):
         for th in ths:
             th.wait()
 
-        parsed_hmmer_output = ""
         for m in split_files:
             #hmm_parser_output = hmmscan_parser.run("%sd%s"%(outPath,m), eval_num=hmm_eval, coverage=hmm_cov)
             hmm_parser_output = hmmscan_parser.run(os.path.join(outPath, f"d{m}"), eval_num=hmm_eval, coverage=hmm_cov)
             with open(os.path.join(outPath, f"temp_{m}"), 'w') as temp_hmmer_file: #todo don't even write these files!
                 temp_hmmer_file.write(hmm_parser_output)
-                parsed_hmmer_output += hmm_parser_output
             os.remove(os.path.join(outPath,f"d{m}"))
             os.remove(os.path.join(outPath, m))
 
@@ -141,9 +139,6 @@ def split_uniInput(uniInput,dbcan_thread,outPath,dbDir,hmm_eval,hmm_cov):
                 f.write(files_lines[j])
                 f.close()
 
-        with open(os.path.join(outPath, "dtemp2.out")) as file:
-            file.write(parsed_hmmer_output)
-        pass
     else:
         if sys.platform.__contains__("win"):
             wsl_temp_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'd.txt')}'", capture_output=True, check=True).stdout.decode().strip()
@@ -431,7 +426,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
                     newline = subfam + "\t" + sub_composition + "\t" + sub_ec + "\t" + substrate + "\t" + rest
                     out.write(newline)
         # call(['mv', outDir+prefix+'temp', outDir+prefix+'dbsub.out'])  #todo fix for windows
-        shutil.move(os.path.join(outPath, "temp"), os.path.join(outPath, "dsub.out"))
+        shutil.move(os.path.join(outPath, "temp"), os.path.join(outPath, "dbsub.out"))
 
     # parse hmmer result
     if tools[1]:
