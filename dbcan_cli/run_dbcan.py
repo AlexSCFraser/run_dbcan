@@ -295,7 +295,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     if tools[0]: ### run diamond
         # diamond blastp -d db/CAZy -e 1e-102 -q output_EscheriaColiK12MG1655/uniInput -k 1 -p 2 -o output_EscheriaColiK12MG1655/diamond1.out -f 6
         print("\n\n***************************1. DIAMOND start*************************************************\n\n")
-        subprocess.run(f'diamond blastp -d {os.path.join(dbDir, "CAZy")} -e {str(dia_eval)} -q {os.path.join(outPath, "uniInput")} -k 1 -p {dia_cpu} -o {os.path.join(outPath, "diamond.out")} -f 6', check=True, stderr=sys.stderr)
+        subprocess.run(["diamond","blastp","-d", os.path.join(dbDir, "CAZy"), "-e", str(dia_eval), "-q", os.path.join(outPath, "uniInput"), "-k", "1", "-p", str(dia_cpu), "-o", os.path.join(outPath, "diamond.out"), "-f", "6"], check=True, stderr=sys.stderr)
         print("\n\n***************************1. DIAMOND end***************************************************\n\n")
 
     if tools[1]: ### run hmmscan (hmmer)
