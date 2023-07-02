@@ -37,7 +37,7 @@ from dbcan.utils.cgc_substrate_prediction import cgc_substrate_prediction
 
 
 def convert_path_wsl(path: str):
-    return subprocess.run(f"wsl wslpath '{path}'", capture_output=True, check=True).stdout.decode().strip()
+    return subprocess.run([f"wsl", "wslpath", f"'{path}'"], capture_output=True, check=True).stdout.decode().strip()
 
 def runHmmScan(outPath, hmm_cpu, dbDir, hmm_eval, hmm_cov, db_name):
     temp_file_path = os.path.join(outPath, f"h{db_name}.out")
@@ -45,14 +45,12 @@ def runHmmScan(outPath, hmm_cpu, dbDir, hmm_eval, hmm_cov, db_name):
     db_path = os.path.join(dbDir, f"{db_name}.hmm")
     uniInput_path = os.path.join(outPath, "uniInput")
     if sys.platform.__contains__("win"):
-
-        win_temp_path = subprocess.run(f"wsl wslpath '{temp_file_path}'", capture_output=True, check=True).stdout.decode().strip()
-        win_db_path = subprocess.run(f"wsl wslpath '{db_path}'", capture_output=True, check=True).stdout.decode().strip()
-        win_uniInput_path = subprocess.run(f"wsl wslpath '{uniInput_path}'", capture_output=True, check=True).stdout.decode().strip()
+        win_temp_path = convert_path_wsl(temp_file_path)
+        win_db_path = convert_path_wsl(db_path)
+        win_uniInput_path = convert_path_wsl(uniInput_path)
         subprocess.run(["wsl", "hmmscan", "--domtblout", win_temp_path, "--cpu", str(hmm_cpu), "-o", "/dev/null", win_db_path, win_uniInput_path], check=True)
-
     else:
-        subprocess.run(['hmmscan', '--domtblout', temp_file_path, '--cpu', hmm_cpu, '-o', '/dev/null', db_path, uniInput_path], check=True)
+        subprocess.run(['hmmscan', '--domtblout', temp_file_path, '--cpu', str(hmm_cpu), '-o', '/dev/null', db_path, uniInput_path], check=True)
     # call('hmmscan_parser.py %sh%s.out %s %s > %s%s.out'%(outPath, db_name, hmm_eval, hmm_cov, outPath, db_name), shell=True)
     parsed_hmm_output = hmmscan_parser.run(input_file=temp_file_path, eval_num=hmm_eval, coverage=hmm_cov)
     with open(out_file_path, 'w') as f:
@@ -106,9 +104,9 @@ def split_uniInput(uniInput,dbcan_thread,outPath,dbDir,hmm_eval,hmm_cov):
         ths = []
         for j in split_files:
             if sys.platform.__contains__("win"):
-                wsl_temp_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, f'd{j}')}'", capture_output=True, check=True).stdout.decode().strip()
-                wsl_db_path = subprocess.run(f"wsl wslpath '{os.path.join(dbDir, 'dbCAN_sub.hmm')}'", capture_output=True, check=True).stdout.decode().strip()
-                wsl_uniInput_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, j)}'", capture_output=True, check=True).stdout.decode().strip()
+                wsl_temp_path = convert_path_wsl(os.path.join(outPath, f'd{j}'))
+                wsl_db_path = convert_path_wsl(os.path.join(dbDir, 'dbCAN_sub.hmm'))
+                wsl_uniInput_path = convert_path_wsl(os.path.join(outPath, j))
                 ths.append(Popen(["wsl", "hmmscan", "--domtblout", wsl_temp_path, "--cpu", '5', "-o", "/dev/null", wsl_db_path, wsl_uniInput_path]))
             #todo test for windows
             else:
@@ -140,15 +138,20 @@ def split_uniInput(uniInput,dbcan_thread,outPath,dbDir,hmm_eval,hmm_cov):
                 f.close()
 
     else:
+        hmmer_out_path = os.path.join(outPath, 'd.txt')
+        dbcan_sub_db_path = os.path.join(dbDir, 'dbCAN_sub.hmm')
+        uniInput_path = os.path.join(outPath, 'uniInput')
+
         if sys.platform.__contains__("win"):
-            wsl_temp_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'd.txt')}'", capture_output=True, check=True).stdout.decode().strip()
-            wsl_db_path = subprocess.run(f"wsl wslpath '{os.path.join(dbDir, 'dbCAN_sub.hmm')}'", capture_output=True, check=True).stdout.decode().strip()
-            wsl_uniInput_path = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'uniInput')}'", capture_output=True, check=True).stdout.decode().strip()
-            subprocess.run(["wsl", "hmmscan", "--domtblout", wsl_temp_path, "--cpu", '5', "-o", "/dev/null", wsl_db_path, wsl_uniInput_path], check=True)
+            wsl_temp_path = convert_path_wsl(hmmer_out_path)
+            wsl_db_path = convert_path_wsl(dbcan_sub_db_path)
+            wsl_uniInput_path = convert_path_wsl(uniInput_path)
+            hmmer_args = ["wsl", "hmmscan", "--domtblout", wsl_temp_path, "--cpu", '5', "-o", "/dev/null", wsl_db_path, wsl_uniInput_path]
             #todo fix for windows
         else:
-            dbsub = Popen(['hmmscan', '--domtblout', '%sd.txt'%outPath, '--cpu', '5', '-o', '/dev/null', '%sdbCAN_sub.hmm'%dbDir, '%suniInput'%outPath])
-            dbsub.wait()
+            hmmer_args = ["hmmscan", "--domtblout", hmmer_out_path, "--cpu", '5', "-o", "/dev/null", dbcan_sub_db_path, uniInput_path]
+
+        subprocess.run(hmmer_args, check=True)
 
         hmm_parser_output = hmmscan_parser.run(os.path.join(outPath, "d.txt"), eval_num=hmm_eval, coverage=hmm_cov) #todo fix for windows
         with open(os.path.join(outPath, "dtemp.out"), 'w') as temp_hmmer_file:  #todo fix for windows
@@ -177,7 +180,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     if sys.platform.__contains__("win"):
         # Check WSL for required programs before continuing on windows
         try:
-            subprocess.run("wsl hmmscan -h", capture_output=True, check=True)
+            subprocess.run(["wsl", "hmmscan", "-h"], capture_output=True, check=True)
         except FileNotFoundError as f_error:
             raise UserWarning("WSL not installed, please install Windows Subsystem for Linux") from f_error
         except subprocess.CalledProcessError as c_error:
@@ -185,7 +188,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
 
         try:
             if use_signalP:
-                subprocess.run("wsl signalp -h", capture_output=True, check=True)
+                subprocess.run(["wsl", "signalp", "-h"], capture_output=True, check=True)
         except FileNotFoundError as f_error:
             raise UserWarning("WSL not installed, please install Windows Subsystem for Linux") from f_error
         except subprocess.CalledProcessError as c_error:
@@ -301,13 +304,14 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     if tools[1]: ### run hmmscan (hmmer)
         print("\n\n***************************2. HMMER start*************************************************\n\n")
         if sys.platform.__contains__("win"):
-            win_hpath = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'h.out')}'", capture_output=True, check=True).stdout.decode().strip()
-            win_dbpath = subprocess.run(f"wsl wslpath '{os.path.join(dbDir, dbCANFile)}'", capture_output=True, check=True).stdout.decode().strip()
-            win_outpath = subprocess.run(f"wsl wslpath '{os.path.join(outPath, 'uniInput')}'", capture_output=True, check=True).stdout.decode().strip()
-            subprocess.run(f"wsl hmmscan --domtblout {win_hpath} --cpu {hmm_cpu} -o /dev/null {win_dbpath} {win_outpath}", check=True)
+            win_hpath = convert_path_wsl(os.path.join(outPath, 'h.out'))
+            win_dbpath = convert_path_wsl(os.path.join(dbDir, dbCANFile))
+            win_outpath = convert_path_wsl(os.path.join(outPath, 'uniInput'))
+            subprocess_args = ["wsl", "hmmscan", "--domtblout", win_hpath, "--cpu", str(hmm_cpu), "-o", "/dev/null", win_dbpath, win_outpath]
         else:
             # os.system(f"hmmscan --domtblout {os.path.join(outPath, 'h.out')} --cpu {hmm_cpu} -o /dev/null {os.path.join(dbDir, dbCANFile)} {os.path.join(outPath, 'uniInput')} ")
-            subprocess.run(f"hmmscan --domtblout {os.path.join(outPath, 'h.out')} --cpu {hmm_cpu} -o /dev/null {os.path.join(dbDir, dbCANFile)} {os.path.join(outPath, 'uniInput')}", check=True)
+            subprocess_args = ["hmmscan", "--domtblout", os.path.join(outPath, 'h.out'), "--cpu", str(hmm_cpu), "-o", "/dev/null", os.path.join(dbDir, dbCANFile), os.path.join(outPath, 'uniInput')]
+        subprocess.run(subprocess_args, check=True)
         print("\n\n***************************2. HMMER end***************************************************\n\n")
 
         hmm_parser_output = hmmscan_parser.run(os.path.join(outPath, "h.out"), eval_num=hmm_eval, coverage=hmm_cov)
@@ -745,10 +749,11 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         signalp_out_path = os.path.join(outDir, prefix, 'signalp.out')
         if sys.platform.__contains__("win"):
             # todo: test this windows code
-            wsl_in_path = subprocess.run(f"wsl wslpath '{signalp_in_path}'", capture_output=True, check=True).stdout.decode().strip()
-            args = f'wsl sort -u {wsl_in_path} > {signalp_out_path}'
+            wsl_in_path = convert_path_wsl(signalp_in_path)
+            wsl_out_path = convert_path_wsl(signalp_out_path)
+            args = [f'wsl', 'sort', '-u', wsl_in_path, '>', wsl_out_path]
         else:
-            args = f'sort -u {signalp_in_path} > {signalp_out_path}'
+            args = ['sort', '-u', signalp_in_path, '>', signalp_out_path]
         subprocess.run(args, shell=True, check=True)
         os.remove(os.path.join(outDir, prefix, 'temp'))
 
