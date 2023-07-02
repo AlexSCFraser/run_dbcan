@@ -44,56 +44,60 @@ def parse_hmmer_file(filename):
 		for line in f:
 			if line[0] != '#':
 				line_array = space_re.sub(" ", line).split(' ')
-				if line_array[17] == line_array[18]:  # Same function as the "next if $a[-1] == $a[-2];" line in old perl code
+				if len(line_array) < 22:
+					raise Exception(f"hmmscan output file {filename} seems to have truncated output. One possible "
+									f"cause of this is that your system ran out of memory for HMMER hmmscan process.")
+				if line_array[17] == line_array[18]:  # Same as the "next if $a[-1] == $a[-2];" line in old perl code
 					pass  # skip modules with same start and end index, they are erroneous hits
 				else:
 					data.append(
 						[line_array[0], int(line_array[2]), line_array[3], int(line_array[5]), float(line_array[12]),
-							int(line_array[15]), int(line_array[16]), int(line_array[17]), int(line_array[18])]
+						 int(line_array[15]), int(line_array[16]), int(line_array[17]), int(line_array[18])]
 					)
 
 	sorted_data = sorted(data, key=lambda x: (x[2], x[7], x[8]))
 
-# OLD PERL CODE, this has been replaced by the python dict creation below.
-# 	while ( <> ) {
-#     chomp;
-#     @a = split;
-#     next if $a[-1] == $a[-2];
-#     push(@ {
-#         $b {
-#             $a[2]
-#         }
-#     }, $_);
-# }
+	# OLD PERL CODE, this has been replaced by the python dict creation below.
+	# 	while ( <> ) {
+	#     chomp;
+	#     @a = split;
+	#     next if $a[-1] == $a[-2];
+	#     push(@ {
+	#         $b {
+	#             $a[2]
+	#         }
+	#     }, $_);
+	# }
+
 	# group the entries by accession using a dict with key: accession and value: list of entries of that accession
 	data_dict = defaultdict(list)
 	for entry in sorted_data:
 		data_dict[entry[2]].append(entry)
 
-# OLD PERL CODE, this has been replaced by the python loops below.
-# foreach(sort keys %b) {
-#         @a = @ {
-#             $b {
-#                 $_
-#             }
-#         };
-#         for ($i = 0; $i < $#a; $i++) {
-#             @b = split(/\t/, $a[$i]);
-#             @c = split(/\t/, $a[$i + 1]);
-#             $len1 = $b[-1] - $b[-2];
-#             $len2 = $c[-1] - $c[-2];
-#             $len3 = $b[-1] - $c[-2];
-#             if ($len3 > 0 and($len3 / $len1 > 0.5 or $len3 / $len2 > 0.5)) {
-#                 if ($b[4] < $c[4]) {
-#                     splice(@a, $i + 1, 1);
-#                 } else {
-#                     splice(@a, $i, 1);
-#                 }
-#                 $i = $i - 1;
-#             }
-#         }
-#         foreach(@a) {
-#                 print $_.\"\n\";}}
+	# OLD PERL CODE, this has been replaced by the python loops below.
+	# foreach(sort keys %b) {
+	#         @a = @ {
+	#             $b {
+	#                 $_
+	#             }
+	#         };
+	#         for ($i = 0; $i < $#a; $i++) {
+	#             @b = split(/\t/, $a[$i]);
+	#             @c = split(/\t/, $a[$i + 1]);
+	#             $len1 = $b[-1] - $b[-2];
+	#             $len2 = $c[-1] - $c[-2];
+	#             $len3 = $b[-1] - $c[-2];
+	#             if ($len3 > 0 and($len3 / $len1 > 0.5 or $len3 / $len2 > 0.5)) {
+	#                 if ($b[4] < $c[4]) {
+	#                     splice(@a, $i + 1, 1);
+	#                 } else {
+	#                     splice(@a, $i, 1);
+	#                 }
+	#                 $i = $i - 1;
+	#             }
+	#         }
+	#         foreach(@a) {
+	#                 print $_.\"\n\";}}
 
 # 	Outer loop runs through each accession grouped list
 	for entry_list in data_dict.values():
