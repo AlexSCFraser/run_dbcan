@@ -44,7 +44,7 @@ def runHmmScan(outPath, hmm_cpu, dbDir, hmm_eval, hmm_cov, db_name):
     out_file_path = os.path.join(outPath, f"{db_name}.out")
     db_path = os.path.join(dbDir, f"{db_name}.hmm")
     uniInput_path = os.path.join(outPath, "uniInput")
-    if sys.platform.__contains__("win"):
+    if sys.platform.startswith("win"):
         win_temp_path = convert_path_wsl(temp_file_path)
         win_db_path = convert_path_wsl(db_path)
         win_uniInput_path = convert_path_wsl(uniInput_path)
@@ -103,7 +103,7 @@ def split_uniInput(uniInput,dbcan_thread,outPath,dbDir,hmm_eval,hmm_cov):
 
         ths = []
         for j in split_files:
-            if sys.platform.__contains__("win"):
+            if sys.platform.startswith("win"):
                 wsl_temp_path = convert_path_wsl(os.path.join(outPath, f'd{j}'))
                 wsl_db_path = convert_path_wsl(os.path.join(dbDir, 'dbCAN_sub.hmm'))
                 wsl_uniInput_path = convert_path_wsl(os.path.join(outPath, j))
@@ -142,7 +142,7 @@ def split_uniInput(uniInput,dbcan_thread,outPath,dbDir,hmm_eval,hmm_cov):
         dbcan_sub_db_path = os.path.join(dbDir, 'dbCAN_sub.hmm')
         uniInput_path = os.path.join(outPath, 'uniInput')
 
-        if sys.platform.__contains__("win"):
+        if sys.platform.startswith("win"):
             wsl_temp_path = convert_path_wsl(hmmer_out_path)
             wsl_db_path = convert_path_wsl(dbcan_sub_db_path)
             wsl_uniInput_path = convert_path_wsl(uniInput_path)
@@ -177,7 +177,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
     # if not outDir.endswith("/") and len(outDir) > 0:
     #     outDir += "/"
 
-    if sys.platform.__contains__("win"):
+    if sys.platform.startswith("win"):
         # Check WSL for required programs before continuing on windows
         try:
             subprocess.run(["wsl", "hmmscan", "-h"], capture_output=True, check=True)
@@ -269,24 +269,24 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         pos_path = os.path.join(outPath, "signalp.pos")
         neg_path = os.path.join(outPath, "signalp.neg")
         euk_path = os.path.join(outPath, 'signalp.euk')
-        if sys.platform.__contains__("win"):
+        if sys.platform.startswith("win"):
             input_path = convert_path_wsl(input_path)
             pos_path = convert_path_wsl(pos_path)
             neg_path = convert_path_wsl(neg_path)
 
         if gram == "p" or gram=="all":
             gram_p_args = f'{signalP_path} -t gram+ {input_path} > {pos_path}'
-            if sys.platform.__contains__("win"):
+            if sys.platform.startswith("win"):
                 gram_p_args = "wsl " + gram_p_args
             signalpos = Popen(gram_p_args, shell=True)
         if gram == "n" or gram == "all":
             gram_n_args = f'{signalP_path} -t gram- {input_path} > {neg_path}'
-            if sys.platform.__contains__("win"):
+            if sys.platform.startswith("win"):
                 gram_n_args = "wsl " + gram_n_args
             signalpneg = Popen(gram_n_args, shell=True)
         if gram == "euk" or gram=="all":
             euk_args = f"{signalP_path} -t euk {input_path} > {euk_path}"
-            if sys.platform.__contains__("win"):
+            if sys.platform.startswith("win"):
                 euk_args = "wsl " + euk_args
             signalpeuk = Popen(euk_args, shell=True)
 
@@ -303,7 +303,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
 
     if tools[1]: ### run hmmscan (hmmer)
         print("\n\n***************************2. HMMER start*************************************************\n\n")
-        if sys.platform.__contains__("win"):
+        if sys.platform.startswith("win"):
             win_hpath = convert_path_wsl(os.path.join(outPath, 'h.out'))
             win_dbpath = convert_path_wsl(os.path.join(dbDir, dbCANFile))
             win_outpath = convert_path_wsl(os.path.join(outPath, 'uniInput'))
@@ -747,7 +747,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
 
         signalp_in_path = os.path.join(outDir, prefix, 'temp')
         signalp_out_path = os.path.join(outDir, prefix, 'signalp.out')
-        if sys.platform.__contains__("win"):
+        if sys.platform.startswith("win"):
             # todo: test this windows code
             wsl_in_path = convert_path_wsl(signalp_in_path)
             wsl_out_path = convert_path_wsl(signalp_out_path)
