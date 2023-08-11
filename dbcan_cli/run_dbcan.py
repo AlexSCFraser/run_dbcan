@@ -37,7 +37,7 @@ from dbcan.utils.cgc_substrate_prediction import cgc_substrate_prediction
 
 
 def convert_path_wsl(path: str):
-    return subprocess.run([f"wsl", "wslpath", f"'{path}'"], capture_output=True, check=True).stdout.decode().strip()
+    return subprocess.run([f"wsl", "wslpath", path], capture_output=True, check=True).stdout.decode().strip()
 
 def runHmmScan(outPath, hmm_cpu, dbDir, hmm_eval, hmm_cov, db_name):
     temp_file_path = os.path.join(outPath, f"h{db_name}.out")
@@ -207,10 +207,10 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
             auxFile = os.path.join(outPath, 'prodigal.gff')
 
     if not os.path.isdir(dbDir):
-        print(dbDir , "ERROR: The database directory does not exist")
+        print(dbDir, "ERROR: The database directory does not exist")
         exit()
 
-    if not os.path.isfile(os.path.join(dbDir,'CAZy.dmnd')):
+    if not os.path.isfile(os.path.join(dbDir, 'CAZy.dmnd')):
         print("ERROR: No CAZy DIAMOND database found. \
         Please make sure that your CAZy DIAMOND databased is named 'CAZy.dmnd' and is located in your database directory")
         exit()
@@ -220,7 +220,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
         Please make sure that your dbCAN HMM database is named 'dbCAN-HMMdb-V11.txt' or the newest one, has been through hmmpress, and is located in your database directory")
         exit()
 
-    if not os.path.isfile(os.path.join(dbDir,'dbCAN_sub.hmm')):
+    if not os.path.isfile(os.path.join(dbDir, 'dbCAN_sub.hmm')):
         print("ERROR: No dbCAN_sub HMM database found. \
         Please make sure that your dbCAN_sub HMM databased is named 'dbCAN_sub.hmm' or has been through hmmpress, and is located in your database directory")
         exit()
@@ -273,6 +273,7 @@ def run(inputFile, inputType, cluster=None, dbCANFile="dbCAN.txt", dia_eval=1e-1
             input_path = convert_path_wsl(input_path)
             pos_path = convert_path_wsl(pos_path)
             neg_path = convert_path_wsl(neg_path)
+            euk_path = convert_path_wsl(euk_path)
 
         if gram == "p" or gram=="all":
             gram_p_args = f'{signalP_path} -t gram+ {input_path} > {pos_path}'
