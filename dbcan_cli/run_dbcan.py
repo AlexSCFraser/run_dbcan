@@ -37,6 +37,11 @@ from dbcan.utils.cgc_substrate_prediction import cgc_substrate_prediction
 
 
 def convert_path_wsl(path: str):
+    if not path.__contains__(' '):
+        # this line feels unnecessary, but for some reason this function breaks on windows paths without spaces when
+        # single quoted, and ALSO breaks on windows paths WITH spaces when single quoted, so we only single quote on
+        # paths without spaces. Very weird behaviour. Double quotes don't work at all, they remove all the slahes.
+        path = "'" + path + "'"
     return subprocess.run([f"wsl", "wslpath", path], capture_output=True, check=True).stdout.decode().strip()
 
 def runHmmScan(outPath, hmm_cpu, dbDir, hmm_eval, hmm_cov, db_name):
